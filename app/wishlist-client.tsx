@@ -13,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Undo2,
 } from 'lucide-react';
 
 type Wish = {
@@ -133,6 +134,9 @@ export function WishlistExperience() {
   const [reserved, setReserved] = useState<Set<string>>(new Set());
   const [reserveState, setReserveState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [cancelCode, setCancelCode] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelInput, setCancelInput] = useState('');
+  const [cancelState, setCancelState] = useState<'idle' | 'loading' | 'success' | 'invalid' | 'error'>('idle');
   const [contactOpen, setContactOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [replyCode, setReplyCode] = useState('');
@@ -196,6 +200,39 @@ export function WishlistExperience() {
     }
   }
 
+  async function cancelReservation() {
+    const token = cancelInput.trim();
+    if (!token) return;
+    setCancelState('loading');
+    if (!apiBase) {
+      setCancelState('error');
+      return;
+    }
+    try {
+      const response = await fetch(`${apiBase}/api/reservations/cancel`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      if (!response.ok) throw new Error('cancel_failed');
+      const result = await response.json() as { cancelled: boolean };
+      if (!result.cancelled) {
+        setCancelState('invalid');
+        return;
+      }
+      const ids = wishes.map((wish) => wish.id).join(',');
+      const availabilityResponse = await fetch(`${apiBase}/api/gifts?ids=${encodeURIComponent(ids)}`);
+      if (availabilityResponse.ok) {
+        const items = await availabilityResponse.json() as Array<{ id: string; availability: string }>;
+        setReserved(new Set(items.filter((item) => item.availability === 'reserved').map((item) => item.id)));
+      }
+      setCancelInput('');
+      setCancelState('success');
+    } catch {
+      setCancelState('error');
+    }
+  }
+
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool?: (tool: unknown, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
     if (!context?.registerTool) return;
@@ -241,6 +278,10 @@ export function WishlistExperience() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти идею" />
           </label>
         </div>
+
+        <button type="button" className="cancel-reservation-link" onClick={() => { setCancelOpen(true); setCancelState('idle'); }}>
+          <Undo2 size={15} /> Уже выбрали подарок? Отменить бронь по секретному коду
+        </button>
 
         {filtered.length ? (
           <div className="wish-grid">
@@ -335,6 +376,27 @@ export function WishlistExperience() {
           <div className="dialog-footer-custom">
             <button type="button" className="secondary-button" onClick={() => setContactOpen(false)}>Закрыть</button>
             {messageState !== 'success' && <button type="button" className="primary-button" onClick={sendMessage} disabled={!message.trim() || messageState === 'loading'}>{messageState === 'loading' ? 'Отправляем…' : 'Отправить анонимно'}</button>}
+          </div>
+      </NativeModal>
+
+      <NativeModal open={cancelOpen} onClose={() => setCancelOpen(false)}>
+          <div className="dialog-header">
+            <p className="dialog-kicker"><Undo2 size={16} /> Отмена брони</p>
+            <h2>{cancelState === 'success' ? 'Бронь отменена' : 'Введите секретный код'}</h2>
+            <p>{cancelState === 'success' ? 'Подарок снова отмечен как свободный — его смогут выбрать другие.' : 'Это тот код, который был показан сразу после бронирования. Он не раскрывает, какой подарок вы выбрали.'}</p>
+          </div>
+          {cancelState !== 'success' && (
+            <label className="form-field">
+              <span>Секретный код отмены</span>
+              <input value={cancelInput} onChange={(event) => { setCancelInput(event.target.value); if (cancelState !== 'idle') setCancelState('idle'); }} autoComplete="off" spellCheck={false} placeholder="Вставьте сохранённый код" />
+            </label>
+          )}
+          {cancelState === 'invalid' && <p className="form-error" role="alert">Бронь с таким кодом не найдена. Проверьте, что код скопирован полностью и без лишних символов.</p>}
+          {cancelState === 'error' && <p className="form-error" role="alert">Не удалось связаться с хранилищем. Попробуйте ещё раз немного позже.</p>}
+          {cancelState === 'success' && <p className="form-success" role="status"><Check size={16} /> Всё готово. Секретный код больше не действует.</p>}
+          <div className="dialog-footer-custom">
+            <button type="button" className="secondary-button" onClick={() => setCancelOpen(false)}>Закрыть</button>
+            {cancelState !== 'success' && <button type="button" className="primary-button" onClick={cancelReservation} disabled={!cancelInput.trim() || cancelState === 'loading'}>{cancelState === 'loading' ? 'Отменяем…' : 'Отменить бронь'}</button>}
           </div>
       </NativeModal>
     </>
