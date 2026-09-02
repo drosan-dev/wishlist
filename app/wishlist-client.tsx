@@ -6,6 +6,7 @@ import {
   Check,
   ExternalLink,
   Gift,
+  Gamepad2,
   Home,
   Palette,
   Search,
@@ -21,7 +22,7 @@ type Wish = {
   description: string;
   details?: string;
   priority?: string;
-  category: 'Книги' | 'Творчество' | 'Для дома';
+  category: 'Книги' | 'Творчество' | 'Для дома' | 'Техника';
   link?: string;
   image?: string;
 };
@@ -33,8 +34,6 @@ type DeviceReservation = {
 };
 
 const reservationStorageKey = 'anton-wishlist-reservations-v1';
-
-const publicBase = process.env.NODE_ENV === 'production' ? '/wishlist' : '';
 
 const wishes: Wish[] = [
   {
@@ -53,17 +52,6 @@ const wishes: Wish[] = [
     description: 'Хочу начать вникать в историю Дзирта и этот мир.',
     priority: 'Хороший старт: «Отступник», «Изгнанник», «Странствие»',
     category: 'Книги',
-  },
-  {
-    id: 'storm-of-swords',
-    title: 'Буря мечей',
-    eyebrow: 'Джордж Р. Р. Мартин · третий том',
-    description: 'Продолжаю собирать «Песнь льда и пламени». Нужен именно этот том и обязательно в таком оформлении.',
-    details: 'Ссылка ведёт на визуальный пример серии; покупать именно этот комплект не обязательно.',
-    priority: 'Важно: единое оформление коллекции',
-    category: 'Книги',
-    link: 'https://share.google/lNq10dvHRdEKNPGSW',
-    image: `${publicBase}/asoiaf-reference.jpg`,
   },
   {
     id: 'perelman',
@@ -101,6 +89,15 @@ const wishes: Wish[] = [
     eyebrow: 'Комиксы',
     description: 'Красивые издания, которые складываются в общую картинку на корешках. Несколько томов могут стать стартом коллекции.',
     category: 'Книги',
+  },
+  {
+    id: 'retro-handheld',
+    title: 'Портативная ретроконсоль',
+    eyebrow: 'Техника · ретроигры',
+    description: 'Хорошая портативная консоль для старых игр — удобная, надёжная и с приятным экраном и управлением.',
+    details: 'Конкретную модель лучше выбирать по честным обзорам: важны качество сборки, нормальные кнопки и стабильная работа.',
+    priority: 'Главное — не случайный китайский ноунейм, а действительно качественное устройство',
+    category: 'Техника',
   },
   {
     id: 'craft-kit',
@@ -269,14 +266,14 @@ export function WishlistExperience() {
         <div className="section-heading">
           <div>
             <p className="eyebrow"><Sparkles size={15} /> Список желаний</p>
-            <h2 id="wishes-title">Идеи, к которым<br />стоит присмотреться</h2>
+            <h2 id="wishes-title">То, чему я<br />правда обрадуюсь</h2>
           </div>
-          <p>Здесь нет обязательных покупок — только идеи. Цена и магазин не так важны, как удачный выбор.</p>
+          <p>Это не список покупок и не обещание, что подойдёт любая версия вещи. Детали, качество и ваш собственный выбор по-прежнему важны.</p>
         </div>
 
         <div className="wishlist-tools">
           <div className="category-tabs" role="group" aria-label="Категории пожеланий">
-            {['Все', 'Книги', 'Творчество', 'Для дома'].map((item) => (
+            {['Все', 'Книги', 'Техника', 'Творчество', 'Для дома'].map((item) => (
               <button key={item} type="button" className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>
             ))}
           </div>
@@ -287,35 +284,49 @@ export function WishlistExperience() {
           </label>
         </div>
 
-        <button type="button" className="cancel-reservation-link" onClick={() => { setCancelOpen(true); setCancelState('idle'); }}>
-          <Undo2 size={15} /> Уже выбрали подарок? Отменить бронь по секретному коду
-        </button>
+        <div className="wishlist-meta">
+          <p aria-live="polite">{filtered.length === 1 ? 'Найдена 1 идея' : `Найдено идей: ${filtered.length}`}</p>
+          <button type="button" className="cancel-reservation-link" onClick={() => { setCancelOpen(true); setCancelState('idle'); }}>
+            <Undo2 size={15} /> {deviceReservations.length ? `Мои брони: ${deviceReservations.length}` : 'Отменить бронь по коду'}
+          </button>
+        </div>
 
         {filtered.length ? (
           <div className="wish-grid">
             {filtered.map((wish, index) => {
               const isReserved = reserved.has(wish.id);
+              const ownReservation = deviceReservations.find((item) => item.giftId === wish.id);
               return (
-                <article className={`wish-card ${wish.image ? 'wish-card-featured' : ''} ${isReserved ? 'is-reserved' : ''}`} key={wish.id}>
+                <article className={`wish-card ${wish.image ? 'wish-card-featured' : ''} ${isReserved ? 'is-reserved' : ''} ${ownReservation ? 'is-own-reservation' : ''}`} key={wish.id}>
                   {wish.image ? (
                     <div className="wish-image"><img src={wish.image} alt="Пример нужного единого оформления серии «Песнь льда и пламени»" /></div>
                   ) : (
                     <div className={`wish-symbol symbol-${index % 4}`} aria-hidden="true">
-                      {wish.category === 'Книги' ? <BookOpen /> : wish.category === 'Творчество' ? <Palette /> : <Home />}
+                      {wish.category === 'Книги' ? <BookOpen /> : wish.category === 'Техника' ? <Gamepad2 /> : wish.category === 'Творчество' ? <Palette /> : <Home />}
                     </div>
                   )}
                   <div className="wish-card-body">
                     <div className="wish-status-row">
                       <p className="card-eyebrow">{wish.eyebrow}</p>
-                      <span className={`availability ${isReserved ? 'reserved' : ''}`}>{isReserved ? <><Check size={13} /> Уже выбрали</> : 'Свободно'}</span>
+                      <span className={`availability ${isReserved ? 'reserved' : ''} ${ownReservation ? 'own' : ''}`}>{ownReservation ? <><Check size={13} /> Вы выбрали</> : isReserved ? <><Check size={13} /> Уже выбрали</> : 'Свободно'}</span>
                     </div>
                     <h3>{wish.title}</h3>
                     <p>{wish.description}</p>
                     {wish.priority && <p className="priority-note"><Sparkles size={14} /> {wish.priority}</p>}
                     {wish.details && <p className="wish-details">{wish.details}</p>}
                     <div className="card-actions">
-                      <button type="button" disabled={isReserved} className="reserve-button" onClick={() => { setSelected(wish); setReserveState('idle'); setCancelCode(''); }}>
-                        {isReserved ? 'Подарок уже выбрали' : 'Я хочу это подарить'}
+                      <button type="button" disabled={isReserved && !ownReservation} className={`reserve-button ${ownReservation ? 'cancel-own-button' : ''}`} onClick={() => {
+                        if (ownReservation) {
+                          setCancelInput(ownReservation.token);
+                          setCancelOpen(true);
+                          setCancelState('idle');
+                        } else {
+                          setSelected(wish);
+                          setReserveState('idle');
+                          setCancelCode('');
+                        }
+                      }}>
+                        {ownReservation ? 'Отменить мою бронь' : isReserved ? 'Подарок уже выбрали' : 'Я хочу это подарить'}
                       </button>
                       {wish.link && <a href={wish.link} target="_blank" rel="noopener noreferrer" className="example-link">Открыть пример <ExternalLink size={14} /></a>}
                     </div>
@@ -329,13 +340,13 @@ export function WishlistExperience() {
 
       <section className="not-wanted-section" id="not-wanted" aria-labelledby="not-wanted-title">
         <div className="section-heading inverse">
-          <div><p className="eyebrow">Что лучше не дарить</p><h2 id="not-wanted-title">Внимание важнее вещи</h2></div>
-          <p>Хочется, чтобы подарок остался со мной и пригодился, а не стал вещью «для галочки».</p>
+          <div><p className="eyebrow">Что лучше не дарить</p><h2 id="not-wanted-title">Пусть вещь останется нужной</h2></div>
+          <p>Хочется сохранить подарок и действительно им пользоваться, а не искать через некоторое время, куда его пристроить.</p>
         </div>
         <div className="not-grid">
-          <article><span>01</span><h3>Подарки ради шутки</h3><p>Если после первого смеха непонятно, что делать с вещью, лучше выбрать другую идею.</p></article>
-          <article><span>02</span><h3>Случайные настолки</h3><p>Только если вы на двести процентов уверены, что мне зайдёт и мы сыграем больше одного раза.</p></article>
-          <article><span>03</span><h3>Книги «для прикола»</h3><p>Книга не из списка — только если вы правда хотите, чтобы я её прочитал, и верите, что я это сделаю.</p></article>
+          <article><span>01</span><h3>Подарки только ради шутки</h3><p>Если после первого смеха вещь становится ненужной, лучше выбрать что-нибудь другое.</p></article>
+          <article><span>02</span><h3>Настолки наугад</h3><p>Только если вы на двести процентов уверены, что игра мне зайдёт и мы достанем её больше одного раза.</p></article>
+          <article><span>03</span><h3>Книги «для прикола»</h3><p>Книгу не из списка стоит дарить, если вы правда хотите, чтобы я её прочитал, и думаете, что она мне подойдёт.</p></article>
         </div>
       </section>
 
