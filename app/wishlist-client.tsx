@@ -28,6 +28,14 @@ type Wish = {
   image?: string;
 };
 
+type DeviceReservation = {
+  giftId: string;
+  title: string;
+  token: string;
+};
+
+const reservationStorageKey = 'anton-wishlist-reservations-v1';
+
 const publicBase = process.env.NODE_ENV === 'production' ? '/wishlist' : '';
 
 const wishes: Wish[] = [
@@ -137,10 +145,26 @@ export function WishlistExperience() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelInput, setCancelInput] = useState('');
   const [cancelState, setCancelState] = useState<'idle' | 'loading' | 'success' | 'invalid' | 'error'>('idle');
+  const [deviceReservations, setDeviceReservations] = useState<DeviceReservation[]>([]);
+  const [activeCancelToken, setActiveCancelToken] = useState('');
   const [contactOpen, setContactOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [replyCode, setReplyCode] = useState('');
   const [messageState, setMessageState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(reservationStorageKey) ?? '[]') as DeviceReservation[];
+      if (Array.isArray(saved)) setDeviceReservations(saved.filter((item) => item?.giftId && item?.title && item?.token));
+    } catch {
+      try { localStorage.removeItem(reservationStorageKey); } catch { /* Storage can be disabled by the browser. */ }
+    }
+  }, []);
+
+  function saveDeviceReservations(items: DeviceReservation[]) {
+    setDeviceReservations(items);
+    try { localStorage.setItem(reservationStorageKey, JSON.stringify(items)); } catch { /* The code is still shown for manual saving. */ }
+  }
 
   useEffect(() => {
     if (!apiBase) return;
@@ -171,6 +195,10 @@ export function WishlistExperience() {
       if (!response.ok) throw new Error('reserve_failed');
       const result = await response.json() as { cancelToken: string };
       setCancelCode(result.cancelToken);
+      saveDeviceReservations([
+        ...deviceReservations.filter((item) => item.giftId !== selected.id),
+        { giftId: selected.id, title: selected.title, token: result.cancelToken },
+      ]);
       setReserved((current) => new Set(current).add(selected.id));
       setReserveState('success');
     } catch {
@@ -200,9 +228,10 @@ export function WishlistExperience() {
     }
   }
 
-  async function cancelReservation() {
-    const token = cancelInput.trim();
+  async function cancelReservation(savedToken?: string) {
+    const token = (savedToken ?? cancelInput).trim();
     if (!token) return;
+    setActiveCancelToken(token);
     setCancelState('loading');
     if (!apiBase) {
       setCancelState('error');
@@ -217,18 +246,25 @@ export function WishlistExperience() {
       if (!response.ok) throw new Error('cancel_failed');
       const result = await response.json() as { cancelled: boolean };
       if (!result.cancelled) {
+        if (savedToken) saveDeviceReservations(deviceReservations.filter((item) => item.token !== token));
         setCancelState('invalid');
+        setActiveCancelToken('');
         return;
       }
-      const ids = wishes.map((wish) => wish.id).join(',');
-      const availabilityResponse = await fetch(`${apiBase}/api/gifts?ids=${encodeURIComponent(ids)}`);
-      if (availabilityResponse.ok) {
-        const items = await availabilityResponse.json() as Array<{ id: string; availability: string }>;
-        setReserved(new Set(items.filter((item) => item.availability === 'reserved').map((item) => item.id)));
-      }
+      saveDeviceReservations(deviceReservations.filter((item) => item.token !== token));
       setCancelInput('');
+      setActiveCancelToken('');
       setCancelState('success');
+      const ids = wishes.map((wish) => wish.id).join(',');
+      try {
+        const availabilityResponse = await fetch(`${apiBase}/api/gifts?ids=${encodeURIComponent(ids)}`);
+        if (availabilityResponse.ok) {
+          const items = await availabilityResponse.json() as Array<{ id: string; availability: string }>;
+          setReserved(new Set(items.filter((item) => item.availability === 'reserved').map((item) => item.id)));
+        }
+      } catch { /* Cancellation succeeded even if the status refresh did not. */ }
     } catch {
+      setActiveCancelToken('');
       setCancelState('error');
     }
   }
@@ -346,9 +382,7 @@ export function WishlistExperience() {
           <div className="dialog-header">
             <p className="dialog-kicker"><ShieldCheck size={16} /> Анонимная бронь</p>
             <h2>{reserveState === 'success' ? 'Готово, подарок забронирован' : `Забронировать «${selected?.title ?? ''}»?`}</h2>
-            <p>
-              {reserveState === 'success' ? 'Другие посетители увидят, что идея уже выбрана, но не узнают кем.' : 'Другие увидят только статус — ваше имя и контакты не нужны.'}
-            </p>
+            <p>{reserveState === 'success' ? 'Другие посетители увидят, что идея уже выбрана, но не узнают кем. Код отмены сохранён в этом браузере.' : 'Другие увидят только статус — ваше имя и контакты не нужны.'}</p>
           </div>
           {reserveState === 'success' ? (
             <label className="form-field"><span>Секретный код для отмены</span><input value={cancelCode} readOnly onFocus={(event) => event.currentTarget.select()} /></label>
@@ -386,17 +420,32 @@ export function WishlistExperience() {
             <p>{cancelState === 'success' ? 'Подарок снова отмечен как свободный — его смогут выбрать другие.' : 'Это тот код, который был показан сразу после бронирования. Он не раскрывает, какой подарок вы выбрали.'}</p>
           </div>
           {cancelState !== 'success' && (
-            <label className="form-field">
-              <span>Секретный код отмены</span>
-              <input value={cancelInput} onChange={(event) => { setCancelInput(event.target.value); if (cancelState !== 'idle') setCancelState('idle'); }} autoComplete="off" spellCheck={false} placeholder="Вставьте сохранённый код" />
-            </label>
+            <>
+              {deviceReservations.length > 0 && (
+                <div className="saved-reservations">
+                  <p>Сохранено на этом устройстве</p>
+                  {deviceReservations.map((reservation) => (
+                    <div className="saved-reservation" key={reservation.token}>
+                      <span>{reservation.title}</span>
+                      <button type="button" onClick={() => cancelReservation(reservation.token)} disabled={cancelState === 'loading'}>
+                        {activeCancelToken === reservation.token ? 'Отменяем…' : 'Отменить'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="form-field">
+                <span>{deviceReservations.length ? 'Или введите другой код' : 'Секретный код отмены'}</span>
+                <input value={cancelInput} onChange={(event) => { setCancelInput(event.target.value); if (cancelState !== 'idle') setCancelState('idle'); }} autoComplete="off" spellCheck={false} placeholder="Вставьте сохранённый код" />
+              </label>
+            </>
           )}
           {cancelState === 'invalid' && <p className="form-error" role="alert">Бронь с таким кодом не найдена. Проверьте, что код скопирован полностью и без лишних символов.</p>}
           {cancelState === 'error' && <p className="form-error" role="alert">Не удалось связаться с хранилищем. Попробуйте ещё раз немного позже.</p>}
           {cancelState === 'success' && <p className="form-success" role="status"><Check size={16} /> Всё готово. Секретный код больше не действует.</p>}
           <div className="dialog-footer-custom">
             <button type="button" className="secondary-button" onClick={() => setCancelOpen(false)}>Закрыть</button>
-            {cancelState !== 'success' && <button type="button" className="primary-button" onClick={cancelReservation} disabled={!cancelInput.trim() || cancelState === 'loading'}>{cancelState === 'loading' ? 'Отменяем…' : 'Отменить бронь'}</button>}
+            {cancelState !== 'success' && <button type="button" className="primary-button" onClick={() => cancelReservation()} disabled={!cancelInput.trim() || cancelState === 'loading'}>{cancelState === 'loading' ? 'Отменяем…' : 'Отменить бронь'}</button>}
           </div>
       </NativeModal>
     </>
