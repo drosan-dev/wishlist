@@ -1,4 +1,4 @@
-import { ArrowDown, Gift, MessageCircle, Sparkles } from 'lucide-react';
+import { ArrowDown, Gift, Sparkles } from 'lucide-react';
 import { WishlistExperience } from './wishlist-client';
 
 export const dynamic = 'force-static';
@@ -16,9 +16,6 @@ export default function Home() {
           <a href="#wishes">Пожелания</a>
           <a href="#not-wanted">Не дарить</a>
         </nav>
-        <a className="quiet-action" href="#contact">
-          <MessageCircle size={16} /> Написать анонимно
-        </a>
       </header>
 
       <section className="hero" id="top">

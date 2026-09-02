@@ -2,8 +2,6 @@ interface Env {
   DB: D1Database;
   GIFT_HASH_SECRET: string;
   ALLOWED_ORIGIN: string;
-  VK_GROUP_TOKEN: string;
-  VK_OWNER_ID: string;
 }
 
 const encoder = new TextEncoder();
@@ -19,26 +17,6 @@ function json(data: unknown, status = 200, origin = '*') {
       'cache-control': 'no-store',
     },
   });
-}
-
-async function sendVkNotification(body: string, env: Env) {
-  const randomId = crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
-  const params = new URLSearchParams({
-    access_token: env.VK_GROUP_TOKEN,
-    peer_id: env.VK_OWNER_ID,
-    random_id: String(randomId),
-    message: `Новый анонимный вопрос с вишлиста:\n\n${body}`,
-    v: '5.199',
-  });
-  const response = await fetch('https://api.vk.com/method/messages.send', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: params,
-  });
-  const result = await response.json() as { response?: number; error?: { error_code: number; error_msg: string } };
-  if (!response.ok || result.error || result.response === undefined) {
-    throw new Error(result.error ? `VK ${result.error.error_code}: ${result.error.error_msg}` : `VK HTTP ${response.status}`);
-  }
 }
 
 function randomToken() {
@@ -98,30 +76,6 @@ export default {
       if (!payload.token || payload.token.length < 32) return json({ error: 'invalid_token' }, 400, origin);
       const result = await env.DB.prepare('DELETE FROM reservations WHERE cancel_token_hash = ?1').bind(await sha256(payload.token)).run();
       return json({ cancelled: result.meta.changes > 0 }, 200, origin);
-    }
-
-    if (request.method === 'POST' && url.pathname === '/api/messages') {
-      const payload = await request.json().catch(() => ({})) as { body?: string; website?: string };
-      if (payload.website) return json({ accepted: true }, 202, origin);
-      const body = payload.body?.trim() ?? '';
-      if (!body || body.length > 1200) return json({ error: 'invalid_message' }, 400, origin);
-      const replyCode = randomToken().slice(0, 18);
-      const messageId = crypto.randomUUID();
-      await env.DB.prepare('INSERT INTO anonymous_messages (id, body, reply_code_hash, created_at) VALUES (?1, ?2, ?3, ?4)')
-        .bind(messageId, body, await sha256(replyCode), Date.now()).run();
-      try {
-        await sendVkNotification(body, env);
-      } catch (error) {
-        console.error('Failed to deliver VK notification', error instanceof Error ? error.message : error);
-      }
-      return json({ replyCode }, 202, origin);
-    }
-
-    const replyMatch = url.pathname.match(/^\/api\/messages\/([A-Za-z0-9_-]{12,32})$/);
-    if (request.method === 'GET' && replyMatch) {
-      const row = await env.DB.prepare('SELECT reply FROM anonymous_messages WHERE reply_code_hash = ?1')
-        .bind(await sha256(replyMatch[1])).first<{ reply: string | null }>();
-      return json({ status: row?.reply ? 'answered' : 'pending', reply: row?.reply ?? null }, 200, origin);
     }
 
     return json({ error: 'not_found' }, 404, origin);

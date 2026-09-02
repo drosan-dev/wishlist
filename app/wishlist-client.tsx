@@ -4,11 +4,9 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Check,
-  ChevronRight,
   ExternalLink,
   Gift,
   Home,
-  MessageCircle,
   Palette,
   Search,
   ShieldCheck,
@@ -147,10 +145,6 @@ export function WishlistExperience() {
   const [cancelState, setCancelState] = useState<'idle' | 'loading' | 'success' | 'invalid' | 'error'>('idle');
   const [deviceReservations, setDeviceReservations] = useState<DeviceReservation[]>([]);
   const [activeCancelToken, setActiveCancelToken] = useState('');
-  const [contactOpen, setContactOpen] = useState(false);
-  const [message, setMessage] = useState('');
-  const [replyCode, setReplyCode] = useState('');
-  const [messageState, setMessageState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     try {
@@ -203,28 +197,6 @@ export function WishlistExperience() {
       setReserveState('success');
     } catch {
       setReserveState('error');
-    }
-  }
-
-  async function sendMessage() {
-    if (!message.trim()) return;
-    setMessageState('loading');
-    if (!apiBase) {
-      setMessageState('error');
-      return;
-    }
-    try {
-      const response = await fetch(`${apiBase}/api/messages`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ body: message.trim() }),
-      });
-      if (!response.ok) throw new Error('message_failed');
-      const result = await response.json() as { replyCode: string };
-      setReplyCode(result.replyCode);
-      setMessageState('success');
-    } catch {
-      setMessageState('error');
     }
   }
 
@@ -367,17 +339,6 @@ export function WishlistExperience() {
         </div>
       </section>
 
-      <section className="contact-section" id="contact" aria-labelledby="contact-title">
-        <div>
-          <p className="eyebrow"><MessageCircle size={15} /> Можно спросить, не раскрывая себя</p>
-          <h2 id="contact-title">Есть своя идея?</h2>
-          <p>Уточните размер, цвет, модель или спросите, понравится ли мне ваш вариант. Имя, почта и аккаунт не нужны.</p>
-        </div>
-        <button type="button" className="contact-button" onClick={() => { setContactOpen(true); setMessageState('idle'); }}>
-          Написать анонимно <ChevronRight />
-        </button>
-      </section>
-
       <NativeModal open={Boolean(selected)} onClose={() => setSelected(null)}>
           <div className="dialog-header">
             <p className="dialog-kicker"><ShieldCheck size={16} /> Анонимная бронь</p>
@@ -392,24 +353,6 @@ export function WishlistExperience() {
           <div className="dialog-footer-custom">
             <button type="button" className="secondary-button" onClick={() => setSelected(null)}>Закрыть</button>
             {reserveState !== 'success' && <button type="button" className="primary-button" onClick={reserveWish} disabled={reserveState === 'loading'}>{reserveState === 'loading' ? 'Бронируем…' : 'Забронировать'}</button>}
-          </div>
-      </NativeModal>
-
-      <NativeModal open={contactOpen} onClose={() => setContactOpen(false)}>
-          <div className="dialog-header">
-            <p className="dialog-kicker"><MessageCircle size={16} /> Без имени и аккаунта</p>
-            <h2>{messageState === 'success' ? 'Сообщение отправлено' : 'Спросить анонимно'}</h2>
-            <p>{messageState === 'success' ? 'Сохраните код, чтобы позже проверить ответ.' : 'Я не увижу, кто отправил вопрос. Не указывайте личные данные в тексте.'}</p>
-          </div>
-          {messageState === 'success' ? (
-            <label className="form-field"><span>Код ответа</span><input value={replyCode} readOnly onFocus={(event) => event.currentTarget.select()} /></label>
-          ) : (
-            <label className="form-field"><span>Ваш вопрос</span><textarea value={message} maxLength={1200} onChange={(event) => setMessage(event.target.value)} placeholder="Например: тебе понравился бы подарок такого цвета?" /><small>{message.length}/1200</small></label>
-          )}
-          {messageState === 'error' && <p className="form-error" role="alert">Форма готова, но общее хранилище ещё не подключено. Настроим его в Cloudflare.</p>}
-          <div className="dialog-footer-custom">
-            <button type="button" className="secondary-button" onClick={() => setContactOpen(false)}>Закрыть</button>
-            {messageState !== 'success' && <button type="button" className="primary-button" onClick={sendMessage} disabled={!message.trim() || messageState === 'loading'}>{messageState === 'loading' ? 'Отправляем…' : 'Отправить анонимно'}</button>}
           </div>
       </NativeModal>
 
