@@ -1,0 +1,11 @@
+name = "anton-wishlist-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "anton-wishlist"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[vars]
+ALLOWED_ORIGIN = "https://drosan-dev.github.io"
