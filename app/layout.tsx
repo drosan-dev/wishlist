@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://drosan-dev.github.io/wishlist/'),
   title: 'Вишлист Антона — подарки с личным смыслом',
   description: 'Не инструкция, а источник вдохновения для подарков, выбранных с душой.',
+  icons: {
+    icon: [{ url: 'favicon.svg', type: 'image/svg+xml' }],
+  },
   openGraph: {
     title: 'Подарки — это немного магия',
     description: 'Вишлист Антона: идеи для подарков, выбранных с душой.',
